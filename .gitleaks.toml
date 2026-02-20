@@ -1,0 +1,29 @@
+[extend]
+# Use default gitleaks rules for secret detection
+
+# Custom rules for personal data patterns
+[[rules]]
+id = "personal-names"
+description = "Personal name references that should not appear in public repo"
+regex = '''(?i)(diogo|joana|simao|simão|dodos)'''
+tags = ["personal-data"]
+
+[[rules]]
+id = "portuguese-banks"
+description = "Portuguese bank-specific references"
+regex = '''(?i)(CGD|Caixa Geral|ActivoBank|Activo Bank|Montepio|Edenred|WiZink|Millennium BCP|BPI|Novo Banco|Bankinter|Moey)'''
+tags = ["personal-data"]
+
+[[rules]]
+id = "personal-urls"
+description = "Personal deployment and repository URLs"
+regex = '''(dodos-smart-expenses|dodos_finances|dodos-finances|diogomenezesborges)'''
+tags = ["personal-data"]
+
+[allowlist]
+paths = [
+  '''\.gitleaks\.toml$''',
+  '''node_modules/''',
+  '''\.next/''',
+  '''coverage/'''
+]

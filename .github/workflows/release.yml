@@ -1,0 +1,182 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.claude/**'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    # Skip if commit message is a version bump or docs-only
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Get current version
+        id: current
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s")
+
+          # Check for breaking changes
+          if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|^feat.*!:"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          # Check for features
+          elif echo "$COMMITS" | grep -qE "^feat"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          # Check for fixes/perf/refactor
+          elif echo "$COMMITS" | grep -qE "^(fix|perf|refactor)"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version
+        id: version
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          TYPE="${{ steps.bump.outputs.type }}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          case $TYPE in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "Bumping $CURRENT -> $NEW_VERSION ($TYPE)"
+
+      - name: Generate release notes
+        id: notes
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          TAG="${{ steps.version.outputs.tag }}"
+
+          {
+            echo "notes<<RELEASE_EOF"
+
+            # Group commits by type
+            if [ -n "$LAST_TAG" ]; then
+              RANGE="${LAST_TAG}..HEAD"
+            else
+              RANGE="HEAD"
+            fi
+
+            FEATS=$(git log $RANGE --pretty=format:"- %s" --grep="^feat" --extended-regexp 2>/dev/null || true)
+            FIXES=$(git log $RANGE --pretty=format:"- %s" --grep="^fix" --extended-regexp 2>/dev/null || true)
+            PERFS=$(git log $RANGE --pretty=format:"- %s" --grep="^perf" --extended-regexp 2>/dev/null || true)
+            REFACTORS=$(git log $RANGE --pretty=format:"- %s" --grep="^refactor" --extended-regexp 2>/dev/null || true)
+            OTHERS=$(git log $RANGE --pretty=format:"- %s" --grep="^feat\|^fix\|^perf\|^refactor\|^docs\|^chore\|^ci\|^style\|^test" --invert-grep --extended-regexp 2>/dev/null || true)
+
+            if [ -n "$FEATS" ]; then
+              echo "## New Features"
+              echo "$FEATS"
+              echo ""
+            fi
+
+            if [ -n "$FIXES" ]; then
+              echo "## Bug Fixes"
+              echo "$FIXES"
+              echo ""
+            fi
+
+            if [ -n "$PERFS" ]; then
+              echo "## Performance"
+              echo "$PERFS"
+              echo ""
+            fi
+
+            if [ -n "$REFACTORS" ]; then
+              echo "## Refactoring"
+              echo "$REFACTORS"
+              echo ""
+            fi
+
+            if [ -n "$OTHERS" ]; then
+              echo "## Other Changes"
+              echo "$OTHERS"
+              echo ""
+            fi
+
+            echo "---"
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...${TAG}"
+
+            echo "RELEASE_EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          npm version ${{ steps.version.outputs.new_version }} --no-git-tag-version
+
+      - name: Commit version bump
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore(release): v${{ steps.version.outputs.new_version }}" || echo "No changes to commit"
+          git push origin main
+
+      - name: Create tag and release
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes "${{ steps.notes.outputs.notes }}" \
+            --target main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          echo "### Release Created 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bump type**: ${{ steps.bump.outputs.type }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+
+      - name: Skip summary
+        if: steps.bump.outputs.type == 'none'
+        run: |
+          echo "### No Release Needed" >> $GITHUB_STEP_SUMMARY
+          echo "No feat/fix/perf/refactor commits since last release — skipping version bump." >> $GITHUB_STEP_SUMMARY

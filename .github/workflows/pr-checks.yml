@@ -1,0 +1,175 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pr-validation:
+    name: Validate Pull Request
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check commit messages
+        run: |
+          echo "Checking commit message format..."
+          git log --format=%B origin/${{ github.base_ref }}..HEAD | grep -E '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+' || {
+            echo "❌ Commit messages must follow Conventional Commits format"
+            echo "Examples: feat: add feature, fix: resolve bug, docs: update readme"
+            exit 1
+          }
+          echo "✅ Commit messages are properly formatted"
+
+      - name: Check for breaking changes
+        run: |
+          if git log --format=%B origin/${{ github.base_ref }}..HEAD | grep -i "BREAKING CHANGE"; then
+            echo "⚠️ Breaking changes detected - ensure version bump is appropriate"
+          else
+            echo "✅ No breaking changes detected"
+          fi
+
+      - name: Analyze bundle size
+        run: |
+          echo "Building application to analyze bundle size..."
+          npm run build
+
+          echo "📊 Build Analysis:"
+          du -sh .next/ || echo "Build complete"
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          DIRECT_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          JWT_SECRET: dummy-jwt-secret-for-build-only-minimum-32-characters-long
+
+      - name: Check for TODO comments
+        run: |
+          echo "Checking for TODO/FIXME comments..."
+          TODO_COUNT=$(grep -r "TODO\|FIXME" app/ lib/ components/ 2>/dev/null | wc -l || echo "0")
+          echo "📝 Found $TODO_COUNT TODO/FIXME comments"
+
+          if [ "$TODO_COUNT" -gt 0 ]; then
+            echo "TODOs found in:"
+            grep -rn "TODO\|FIXME" app/ lib/ components/ 2>/dev/null || true
+          fi
+
+      - name: Check for console.log statements
+        run: |
+          echo "Checking for console.log statements..."
+          CONSOLE_COUNT=$(grep -r "console\.log" app/ lib/ components/ 2>/dev/null | grep -v "// eslint-disable" | wc -l || echo "0")
+
+          if [ "$CONSOLE_COUNT" -gt 0 ]; then
+            echo "⚠️ Found $CONSOLE_COUNT console.log statements (should use proper logging)"
+            grep -rn "console\.log" app/ lib/ components/ 2>/dev/null | grep -v "// eslint-disable" || true
+          else
+            echo "✅ No console.log statements found"
+          fi
+
+      - name: PR size check
+        run: |
+          FILES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+          LINES_ADDED=$(git diff --shortstat origin/${{ github.base_ref }}...HEAD | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+          LINES_DELETED=$(git diff --shortstat origin/${{ github.base_ref }}...HEAD | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+
+          echo "📊 PR Statistics:"
+          echo "Files changed: $FILES_CHANGED"
+          echo "Lines added: $LINES_ADDED"
+          echo "Lines deleted: $LINES_DELETED"
+
+          if [ "$FILES_CHANGED" -gt 30 ]; then
+            echo "⚠️ Large PR detected (>30 files). Consider splitting into smaller PRs."
+          fi
+
+          if [ "$LINES_ADDED" -gt 1000 ]; then
+            echo "⚠️ Large changeset detected (>1000 lines added). Consider splitting."
+          fi
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for secrets in code
+        run: |
+          echo "Checking for potential secrets..."
+
+          # Check for common secret patterns
+          if grep -rE "(password|secret|api_key|apikey|token|credentials)\s*=\s*['\"][^'\"]+['\"]" app/ lib/ components/ 2>/dev/null | grep -v "example" | grep -v "dummy" | grep -v "test"; then
+            echo "⚠️ Potential hardcoded secrets detected!"
+            exit 1
+          else
+            echo "✅ No hardcoded secrets detected"
+          fi
+
+      - name: Check for .env files
+        run: |
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E "^\.env$"; then
+            echo "❌ .env file should not be committed!"
+            exit 1
+          else
+            echo "✅ No .env file in changes"
+          fi
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for dependency vulnerabilities
+        run: |
+          echo "Running npm audit for moderate+ severity vulnerabilities..."
+
+          # Run npm audit and capture output
+          if npm audit --audit-level=moderate 2>&1 | tee audit.log; then
+            echo "✅ No moderate+ severity vulnerabilities detected"
+          else
+            echo "⚠️ Vulnerabilities detected. Checking if they are known acceptable risks..."
+
+            # Check if the only vulnerability is the known xlsx issue
+            if grep -q "xlsx" audit.log && ! grep -q "Critical" audit.log; then
+              echo "⚠️ Known xlsx vulnerability detected (Issue #42 - accepted risk)"
+              echo "This is tracked and has documented mitigation factors:"
+              echo "- Authenticated uploads only"
+              echo "- Trusted users (family members)"
+              echo "- Files from known sources (banks)"
+              echo "✅ Proceeding with known acceptable risk"
+            else
+              echo "❌ New or critical vulnerabilities detected!"
+              cat audit.log
+              exit 1
+            fi
+          fi

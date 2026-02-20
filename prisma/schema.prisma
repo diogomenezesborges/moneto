@@ -1,0 +1,401 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id               String             @id @default(cuid())
+  name             String             // User display name
+  pinHash          String             // bcrypt hash
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  transactions      Transaction[]
+  rules             Rule[]
+  budgets           Budget[]
+  majorCategories   MajorCategory[]
+  categories        Category[]
+  banks             Bank[]
+  holdings          Holding[]
+  recurringCosts    RecurringCost[]
+  investmentReviews InvestmentReview[]
+
+  @@map("users")
+}
+
+model Transaction {
+  id                    String                        @id @default(cuid())
+  rawDate               DateTime
+  rawDescription        String
+  rawAmount             Float                         // + income, - expense
+  rawBalance            Float?
+  origin                String                        // Diogo, Joana, Couple (formerly Comum)
+  bank                  String
+
+  // OLD: Text-based categories (DEPRECATED - kept for backward compatibility during migration)
+  majorCategory         String?                       // DEPRECATED: Use majorCategoryId instead
+  category              String?                       // DEPRECATED: Use categoryId instead
+  subCategory           String?                       // DEPRECATED: Use tags instead
+
+  // NEW: ID-based categories (2-level only: Major → Category)
+  majorCategoryId       String?
+  majorCategoryRef      MajorCategory?                @relation(fields: [majorCategoryId], references: [id], onDelete: SetNull)
+  categoryId            String?
+  categoryRef           Category?                     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // AI Classifier metadata
+  classifierConfidence  Float?                        // 0.0 - 1.0
+  classifierReasoning   String?                       // Why this category?
+  classifierVersion     String?                       // Track prompt version
+
+  notes                 String?
+  tags                  String[]                      @default([]) // Format: "namespace:value" e.g. "trip:croatia", "type:supermercado"
+  status                String                        @default("pending") // pending, categorized
+  reviewStatus          String?                       // null = approved, "pending_review" = needs review, "rejected" = rejected
+  flagged               Boolean                       @default(false) // user flagged for attention
+  importBatchId         String?
+  potentialDuplicateId  String?                       // ID of existing transaction this might be duplicating
+  deletedAt             DateTime?                     // Soft delete: null = active, timestamp = deleted
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  userId                String
+  user                  User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  suggestionFeedback    CategorySuggestionFeedback[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([reviewStatus])
+  @@index([flagged])
+  @@index([majorCategory])
+  @@index([majorCategoryId])
+  @@index([categoryId])
+  @@index([rawDate])
+  @@index([potentialDuplicateId])
+  @@index([deletedAt])
+  @@index([tags])
+  @@index([bank])
+  // PERFORMANCE: Composite indexes for common query patterns (2026-02-12)
+  @@index([userId, status])              // For pending/categorized queries (auto-categorize route)
+  @@index([userId, reviewStatus])        // For review queries (review route)
+  @@index([userId, deletedAt])           // For soft-delete filtering (most routes)
+  @@index([userId, status, deletedAt])   // For combined status + soft-delete filtering
+  @@index([userId, bank])                // For bank filtering (cash-flow route)
+  @@index([userId, rawDate])             // For date range queries (transactions list)
+  @@map("transactions")
+}
+
+model Rule {
+  id            String    @id @default(cuid())
+  keyword       String    // "continente", "uber eats"
+  majorCategory String    // DEPRECATED: Legacy text-based major category
+  category      String    // DEPRECATED: Legacy text-based category
+  subCategory   String?   // DEPRECATED: Use tags instead
+  tags          String[]  @default([]) // Tags to apply: ["type:supermercado", "vehicle:carro"]
+  isDefault     Boolean   @default(false)
+  deletedAt     DateTime? // Soft delete: null = active, timestamp = deleted
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyword])
+  @@index([deletedAt])
+  @@map("rules")
+}
+
+model Budget {
+  id            String   @id @default(cuid())
+  majorCategory String
+  category      String?
+  month         Int      // 1-12
+  year          Int      // 2024
+  budgetAmount  Float
+  actualAmount  Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, majorCategory, category, month, year])
+  @@index([userId])
+  @@index([month, year])
+  @@map("budgets")
+}
+
+model CategorySuggestionFeedback {
+  id            String   @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  // What we suggested
+  suggestedMajorCategory String
+  suggestedCategory      String
+  suggestedTags          String[] @default([]) // Suggested tags
+  suggestedConfidence    String  // 'high', 'medium', 'low'
+  suggestedScore         Int
+  suggestionSource       String  // 'pattern', 'ai', 'historical'
+
+  // What user did
+  action        String  // 'accept', 'reject', 'edit'
+
+  // If edited, what they chose instead
+  actualMajorCategory String?
+  actualCategory      String?
+  actualTags          String[] @default([]) // Actual tags chosen
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@index([action])
+  @@index([suggestionSource])
+  @@map("category_suggestion_feedback")
+}
+
+model FileUpload {
+  id              String   @id @default(cuid())
+  userId          String
+  fileName        String
+  fileType        String   // 'csv', 'pdf', 'image', 'xlsx'
+  fileSize        Int
+  processingMethod String  // 'traditional', 'ai'
+  status          String   // 'processing', 'completed', 'failed'
+
+  // AI Processing metadata
+  aiModel         String?  // 'gemini-pro', 'gemini-vision'
+  aiPrompt        String?  @db.Text
+  aiResponse      String?  @db.Text
+
+  // Results
+  transactionsFound Int     @default(0)
+  transactionsImported Int  @default(0)
+  errors          String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@map("file_uploads")
+}
+
+// ========== NEW: ID-BASED TAXONOMY (ML-READY) ==========
+
+model MajorCategory {
+  id            String         @id // Fixed: 'mc_income', 'mc_fixed_costs', etc.
+  slug          String         // Machine-friendly: 'rendimento', 'custos_fixos'
+  name          String         // Human label (can change): 'Rendimento', 'Custos Fixos'
+  nameEn        String?        // English name: 'Income', 'Fixed Costs'
+  emoji         String?
+  budgetCategory String?       // '50_needs', '30_wants', '20_savings', or null
+  sortOrder     Int            @default(0) // Display order
+  userId        String?        // null = system default, set = user custom
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categories    Category[]
+  transactions  Transaction[]
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("major_categories")
+}
+
+model Category {
+  id              String         @id // Generated: 'cat_salario', 'cat_alimentacao', etc.
+  majorCategoryId String
+  majorCategory   MajorCategory  @relation(fields: [majorCategoryId], references: [id], onDelete: Cascade)
+
+  slug            String         // Machine-friendly: 'salario', 'alimentacao'
+  name            String         // Human label (can change): 'Salario', 'Alimentação'
+  nameEn          String?        // English name: 'Salary', 'Food'
+  icon            String?        // Lucide icon name: 'shopping-cart', 'home', etc.
+  sortOrder       Int            @default(0) // Display order
+  userId          String?        // null = system default, set = user custom
+  user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions    Transaction[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([userId, majorCategoryId, slug])
+  @@index([userId])
+  @@index([majorCategoryId])
+  @@map("categories")
+}
+
+model Bank {
+  id        String   @id @default(cuid())
+  name      String   // Display name: 'My Bank', 'Credit Union', etc.
+  slug      String   // Machine-friendly: 'my-bank', 'credit-union'
+  logo      String?  // Path to logo image
+  color     String?  // Brand color for UI
+  userId    String?  // null = system default, set = user custom
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("banks")
+}
+
+// ========== TAG SYSTEM ==========
+
+model TagDefinition {
+  id        String   @id @default(cuid())
+  namespace String   // e.g., 'vehicle', 'trip', 'provider', 'occasion'
+  value     String   // e.g., 'carro', 'croatia', 'sgf', 'natal'
+  label     String   // Portuguese display: 'Carro', 'Croácia', 'SGF', 'Natal'
+  labelEn   String?  // English display: 'Car', 'Croatia', 'SGF', 'Christmas'
+  color     String?  // Hex color for display
+  sortOrder Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([namespace, value])
+  @@index([namespace])
+  @@map("tag_definitions")
+}
+
+// ========== INVESTMENT TRACKING ==========
+
+enum HoldingType {
+  ETF
+  PPR
+  STOCK
+  BOND
+  CRYPTO
+  OTHER
+}
+
+enum InvestmentTransactionType {
+  BUY
+  SELL
+}
+
+model Holding {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String      // "IWDA", "Retirement Fund", "Apple"
+  ticker        String?     // "IWDA.AS", "AAPL" - null for PPRs without tickers
+  type          HoldingType
+  currency      String      @default("EUR")
+
+  // For manual price tracking (PPRs and assets without API prices)
+  manualPrice   Decimal?    @db.Decimal(18, 4)
+  manualPriceAt DateTime?
+
+  // Metadata
+  notes         String?
+  isActive      Boolean     @default(true)
+
+  transactions   InvestmentTransaction[]
+  recurringCosts RecurringCost[]
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([isActive])
+  @@map("holdings")
+}
+
+model InvestmentTransaction {
+  id           String                    @id @default(cuid())
+  holdingId    String
+  holding      Holding                   @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+
+  type         InvestmentTransactionType
+  units        Decimal                   @db.Decimal(18, 8) // Support fractional shares
+  pricePerUnit Decimal                   @db.Decimal(18, 4)
+  fees         Decimal                   @default(0) @db.Decimal(10, 2)
+  date         DateTime
+  notes        String?
+
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([holdingId])
+  @@index([date])
+  @@index([type])
+  @@map("investment_transactions")
+}
+
+enum RecurringCostType {
+  PLATFORM_FEE   // DeGiro custody fee
+  MANAGEMENT_FEE // PPR management fee
+  CUSTODY_FEE    // Asset custody fee
+  FX_CONVERSION  // Currency conversion cost
+  MARKET_FEE     // Exchange fees
+}
+
+enum RecurringCostFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+// Tracks recurring costs for holdings or portfolio-wide
+model RecurringCost {
+  id        String                  @id @default(cuid())
+  userId    String
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdingId String?                 // null = portfolio-wide (e.g., platform fee)
+  holding   Holding?                @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+
+  type      RecurringCostType
+  amount    Decimal                 @db.Decimal(10, 2)
+  frequency RecurringCostFrequency
+  startDate DateTime
+  endDate   DateTime?
+  notes     String?
+
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@index([userId])
+  @@index([holdingId])
+  @@index([startDate])
+  @@map("recurring_costs")
+}
+
+enum ReviewType {
+  QUARTERLY
+  ANNUAL
+  AD_HOC
+}
+
+// Investment decision journal
+model InvestmentReview {
+  id               String     @id @default(cuid())
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date             DateTime
+  reviewType       ReviewType
+  notes            String     @db.Text
+  decisions        String[]   // Array of decisions made
+  attachedHoldings String[]   // Array of holding IDs reviewed
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([userId, date])
+  @@map("investment_reviews")
+}
