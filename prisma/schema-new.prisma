@@ -1,0 +1,253 @@
+// Updated schema with ID-based categories (ML-ready, stable)
+// This is a draft - will replace schema.prisma after review
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id               String             @id @default(cuid())
+  name             String
+  pinHash          String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  transactions     Transaction[]
+  rules            Rule[]
+  budgets          Budget[]
+  majorCategories  MajorCategory[]    // User can customize
+  categories       Category[]         // User can customize
+  subCategories    SubCategory[]      // User can customize
+
+  @@map("users")
+}
+
+// ========== STABLE TAXONOMY (ID-BASED) ==========
+
+model MajorCategory {
+  id            String         @id // Fixed: 'mc_income', 'mc_fixed_costs', etc.
+  slug          String         // Machine-friendly: 'rendimento', 'custos_fixos'
+  name          String         // Human label (can change): 'Rendimento', 'Custos Fixos'
+  emoji         String?
+  userId        String?        // null = system default, set = user custom
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categories    Category[]
+  transactions  Transaction[]
+  rules         Rule[]
+  budgets       Budget[]
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("major_categories")
+}
+
+model Category {
+  id              String         @id // Fixed: 'cat_salario', 'cat_alimentacao', etc.
+  majorCategoryId String
+  majorCategory   MajorCategory  @relation(fields: [majorCategoryId], references: [id], onDelete: Cascade)
+
+  slug            String         // Machine-friendly: 'salario', 'alimentacao'
+  name            String         // Human label (can change): 'Salario', 'Alimentação'
+  userId          String?        // null = system default, set = user custom
+  user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subCategories   SubCategory[]
+  transactions    Transaction[]
+  rules           Rule[]
+  budgets         Budget[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([userId, majorCategoryId, slug])
+  @@index([userId])
+  @@index([majorCategoryId])
+  @@map("categories")
+}
+
+model SubCategory {
+  id          String       @id // Fixed: 'sub_salario_liq', 'sub_supermercado', etc.
+  categoryId  String
+  category    Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  slug        String       // Machine-friendly: 'salario_liq', 'supermercado'
+  name        String       // Human label (can change): 'Salario Liq.', 'Supermercado'
+  userId      String?      // null = system default, set = user custom
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  rules        Rule[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([userId, categoryId, slug])
+  @@index([userId])
+  @@index([categoryId])
+  @@map("sub_categories")
+}
+
+// ========== TRANSACTIONS (ID-BASED) ==========
+
+model Transaction {
+  id                    String                        @id @default(cuid())
+  rawDate               DateTime
+  rawDescription        String
+  rawAmount             Float
+  rawBalance            Float?
+  origin                String
+  bank                  String
+
+  // NEW: ID-based categories (stable, renameable)
+  majorCategoryId       String?
+  majorCategory         MajorCategory?                @relation(fields: [majorCategoryId], references: [id], onDelete: SetNull)
+
+  categoryId            String?
+  category              Category?                     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  subCategoryId         String?
+  subCategory           SubCategory?                  @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
+
+  notes                 String?
+  status                String                        @default("pending")
+  reviewStatus          String?
+  flagged               Boolean                       @default(false)
+  importBatchId         String?
+  potentialDuplicateId  String?
+
+  // AI Classifier metadata
+  classifierConfidence  Float?                        // 0.0 - 1.0
+  classifierReasoning   String?                       // Why this category?
+  classifierVersion     String?                       // Track prompt version
+
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  userId                String
+  user                  User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  suggestionFeedback    CategorySuggestionFeedback[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([reviewStatus])
+  @@index([flagged])
+  @@index([majorCategoryId])
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@index([rawDate])
+  @@index([potentialDuplicateId])
+  @@map("transactions")
+}
+
+// ========== RULES (ID-BASED) ==========
+
+model Rule {
+  id              String         @id @default(cuid())
+  keyword         String
+
+  // NEW: ID-based categories
+  majorCategoryId String?
+  majorCategory   MajorCategory? @relation(fields: [majorCategoryId], references: [id], onDelete: Cascade)
+
+  categoryId      String?
+  category        Category?      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  subCategoryId   String?
+  subCategory     SubCategory?   @relation(fields: [subCategoryId], references: [id], onDelete: Cascade)
+
+  isDefault       Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyword])
+  @@map("rules")
+}
+
+// ========== BUDGETS (ID-BASED) ==========
+
+model Budget {
+  id              String         @id @default(cuid())
+
+  // NEW: ID-based categories
+  majorCategoryId String
+  majorCategory   MajorCategory  @relation(fields: [majorCategoryId], references: [id], onDelete: Cascade)
+
+  categoryId      String?
+  category        Category?      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  month           Int
+  year            Int
+  budgetAmount    Float
+  actualAmount    Float          @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, majorCategoryId, categoryId, month, year])
+  @@index([userId])
+  @@index([month, year])
+  @@map("budgets")
+}
+
+model CategorySuggestionFeedback {
+  id            String   @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  suggestedMajorCategory String
+  suggestedCategory      String
+  suggestedSubCategory   String?
+  suggestedConfidence    String
+  suggestedScore         Int
+  suggestionSource       String
+
+  action        String
+
+  actualMajorCategory String?
+  actualCategory      String?
+  actualSubCategory   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@index([action])
+  @@index([suggestionSource])
+  @@map("category_suggestion_feedback")
+}
+
+model FileUpload {
+  id              String   @id @default(cuid())
+  userId          String
+  fileName        String
+  fileType        String
+  fileSize        Int
+  processingMethod String
+  status          String
+
+  aiModel         String?
+  aiPrompt        String?  @db.Text
+  aiResponse      String?  @db.Text
+
+  transactionsFound Int     @default(0)
+  transactionsImported Int  @default(0)
+  errors          String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@map("file_uploads")
+}

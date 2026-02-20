@@ -1,0 +1,82 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+Thumbs.db
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# old frontend artifacts
+/frontend/
+
+# Claude Code temp files
+tmpclaude-*
+
+# Database backups
+/backups/
+
+# Windows null file
+nul
+
+# Playwright test artifacts
+/playwright-report/
+/.playwright-mcp/
+/test-results/
+*-dark-mode.png
+*-desktop-dark.png
+*-error.png
+*-mobile-dark.png
+*-success.png
+*-tablet-dark.png
+*-clicked.png
+login-page-*.png
+test-task-*.js
+
+# Claude Code metrics
+.claude/metrics/
+
+# Worktrees
+.worktrees/
+
+# Planning docs (internal)
+.planning/
+
+# Backup files
+*.backup
+*.bak
+
+# IDE files
+.vscode/
+.idea/

@@ -1,0 +1,100 @@
+124:  const headers: Record<string, string> = {
+135:  const csrfToken = typeof window !== 'undefined' ? localStorage.getItem('csrf-token') : null
+154:  const options = createFetchOptions(token, additionalHeaders)
+159:  const [auth, setAuth] = useState<AuthState>({
+165:  const [activeTab, setActiveTab] = useState('transactions')
+166:  const [transactions, setTransactions] = useState<TransactionWithUser[]>([])
+167:  const [rules, setRules] = useState<Rule[]>([])
+168:  const [stats, setStats] = useState<any>({})
+169:  const [loading, setLoading] = useState(false)
+170:  const [reviewTransactions, setReviewTransactions] = useState<any[]>([])
+171:  const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([])
+172:  const [lastSelectedReviewId, setLastSelectedReviewId] = useState<string | null>(null)
+173:  const [darkMode, setDarkMode] = useState(false)
+174:  const [language, setLanguage] = useState<'pt' | 'en'>('pt')
+175:  const [authChecked, setAuthChecked] = useState(false)
+176:  const [editingId, setEditingId] = useState<string | null>(null)
+177:  const [editForm, setEditForm] = useState<
+184:  const [savingEdit, setSavingEdit] = useState(false)
+185:  const [validationErrors, setValidationErrors] = useState<string[]>([])
+186:  const [notification, setNotification] = useState<{
+192:  const [showLogin, setShowLogin] = useState(true)
+193:  const [pinInput, setPinInput] = useState('')
+194:  const [nameInput, setNameInput] = useState('')
+195:  const [showPin, setShowPin] = useState(false)
+198:  const [filterStatus, setFilterStatus] = useState('all')
+199:  const [filterMajorCategory, setFilterMajorCategory] = useState('all')
+200:  const [filterCategory, setFilterCategory] = useState('all')
+201:  const [filterTags, setFilterTags] = useState<string[]>([])
+202:  const [filterFlagged, setFilterFlagged] = useState('all')
+203:  const [searchTerm, setSearchTerm] = useState('')
+204:  const [filterDateFrom, setFilterDateFrom] = useState<Date | null>(null)
+205:  const [filterDateTo, setFilterDateTo] = useState<Date | null>(null)
+206:  const [filterOrigin, setFilterOrigin] = useState('all')
+207:  const [filterBank, setFilterBank] = useState('all')
+208:  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+211:  const [sortField, setSortField] = useState<'date' | 'amount' | 'description' | 'origin' | 'bank'>(
+214:  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+217:  const clearAllFilters = () => {
+231:  const hasActiveFilters =
+244:  const [showImportDialog, setShowImportDialog] = useState(false)
+245:  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+246:  const [importOrigin, setImportOrigin] = useState('Couple')
+247:  const [importBank, setImportBank] = useState('Auto-detect')
+248:  const [isDragging, setIsDragging] = useState(false)
+251:  const [showAddTransactionDialog, setShowAddTransactionDialog] = useState(false)
+252:  const [newTransactionForm, setNewTransactionForm] = useState<{
+279:  const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false)
+280:  const [selectedMajorIdForNewCategory, setSelectedMajorIdForNewCategory] = useState<string | null>(
+283:  const [newCategoryName, setNewCategoryName] = useState('')
+286:  const [currentPage, setCurrentPage] = useState(1)
+289:  const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([])
+290:  const [lastSelectedTransactionId, setLastSelectedTransactionId] = useState<string | null>(null)
+291:  const [showBulkEditDialog, setShowBulkEditDialog] = useState(false)
+292:  const [bulkEditForm, setBulkEditForm] = useState<{
+304:  const [pageSize, setPageSize] = useState(20)
+307:  const [newRule, setNewRule] = useState({
+315:  const [taxonomy, setTaxonomy] = useState<MajorCategory[]>([])
+316:  const [tagDefinitions, setTagDefinitions] = useState<TagDefinition[]>([])
+317:  const [expandedMajor, setExpandedMajor] = useState<Set<string>>(new Set())
+318:  const [expandedCategory, setExpandedCategory] = useState<Set<string>>(new Set())
+319:  const [expandedNamespace, setExpandedNamespace] = useState<Set<string>>(new Set())
+320:  const [editValue, setEditValue] = useState('')
+323:  const [banks, setBanks] = useState<any[]>([])
+324:  const [showNewBankForm, setShowNewBankForm] = useState(false)
+325:  const [newBankForm, setNewBankForm] = useState({ name: '', logo: '', color: '' })
+326:  const [savingBank, setSavingBank] = useState(false)
+327:  const [editingBank, setEditingBank] = useState<any | null>(null)
+330:  const [confirmDialog, setConfirmDialog] = useState<{
+342:  const showConfirmDialog = (title: string, message: string, onConfirm: () => void) => {
+346:  const handleConfirm = () => {
+351:  const handleCancel = () => {
+356:  const [dashboardDateRange, setDashboardDateRange] = useState<'all' | '1y' | '6m' | '3m' | '1m'>(
+359:  const [dashboardOriginFilter, setDashboardOriginFilter] = useState<string>('all')
+425:  const toggleDarkMode = () => {
+438:  const loadData = async (token: string) => {
+481:  const refreshTransaction = async (transactionId: string) => {
+504:  const handleAuth = async () => {
+548:  const handleLogout = () => {
+557:  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+563:  const loadTaxonomy = async () => {
+598:  const toggleNamespace = (namespace: string) => {
+608:  const toggleMajor = (id: string) => {
+618:  const toggleCategory = (id: string) => {
+628:  const startEditCategory = (id: string, currentValue: string) => {
+633:  const cancelEditCategory = () => {
+638:  const saveEditCategory = async (type: 'major' | 'category' | 'subcategory', id: string) => {
+662:  const deleteCategory = async (type: 'category' | 'subcategory', id: string, name: string) => {
+683:  const addCategoryToMajor = (majorCategoryId: string) => {
+689:  const loadBanks = async () => {
+704:  const createBank = async () => {
+734:  const startEditingBank = (bank: any) => {
+744:  const updateBank = async () => {
+776:  const deleteBank = async (id: string, name: string) => {
+797:  const confirmAddCategory = async () => {
+828:  const cancelAddCategory = () => {
+834:  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+844:  const handleDragEnter = (e: React.DragEvent) => {
+850:  const handleDragLeave = (e: React.DragEvent) => {
+856:  const handleDragOver = (e: React.DragEvent) => {
+861:  const handleDrop = (e: React.DragEvent) => {
