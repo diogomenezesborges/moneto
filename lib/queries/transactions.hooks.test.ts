@@ -150,7 +150,7 @@ describe('useTransactions', () => {
 
     const calledUrl = (global.fetch as any).mock.calls[0][0]
     expect(calledUrl).toContain('origin=Personal')
-    expect(calledUrl).toContain('bank=Main Bank')
+    expect(calledUrl).toContain('bank=Main+Bank')
     expect(calledUrl).toContain('period=2024-01')
     expect(calledUrl).toContain('majorCategory=Food')
   })
@@ -965,7 +965,7 @@ describe('useCashFlowData', () => {
 
     const calledUrl = (global.fetch as any).mock.calls[0][0]
     expect(calledUrl).toContain('origin=Personal')
-    expect(calledUrl).toContain('bank=Main Bank')
+    expect(calledUrl).toContain('bank=Main+Bank')
     expect(calledUrl).toContain('majorCategory=Food')
   })
 
