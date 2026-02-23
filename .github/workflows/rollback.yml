@@ -1,0 +1,120 @@
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_id:
+        description: 'Vercel deployment ID to rollback to (get from Vercel dashboard)'
+        required: true
+        type: string
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Validate rollback request
+        run: |
+          echo "🔄 Initiating production rollback"
+          echo "Deployment ID: ${{ inputs.deployment_id }}"
+          echo "Reason: ${{ inputs.reason }}"
+          echo "Initiated by: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Rollback Vercel deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          echo "🔄 Rolling back to deployment: ${{ inputs.deployment_id }}"
+          vercel rollback ${{ inputs.deployment_id }} --token=$VERCEL_TOKEN --scope=$VERCEL_ORG_ID --yes
+
+      - name: Verify rollback
+        run: |
+          echo "✅ Rollback completed"
+          echo "Please verify the production site is working correctly"
+
+      - name: Create rollback issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Production Rollback: ${new Date().toISOString().split('T')[0]}`,
+              body: `## Production Rollback Executed
+
+              **Deployment ID**: \`${{ inputs.deployment_id }}\`
+              **Reason**: ${{ inputs.reason }}
+              **Initiated by**: @${{ github.actor }}
+              **Timestamp**: ${new Date().toUTCString()}
+
+              ## Post-Rollback Actions
+              - [ ] Verify production is stable
+              - [ ] Identify root cause of issue
+              - [ ] Create fix for the issue
+              - [ ] Document lessons learned
+              - [ ] Update deployment procedures if needed
+
+              ## Related
+              - [Vercel Dashboard](https://vercel.com/your-project/moneto)
+              - [Production Site](https://your-app.vercel.app)
+              `,
+              labels: ['rollback', 'production', 'urgent']
+            });
+            console.log('Created rollback issue:', issue.data.html_url);
+
+      - name: Notify team
+        run: |
+          echo "📢 Production rollback completed successfully"
+          echo "Issue created for post-rollback tracking"
+          echo "Please review the production environment"
+
+      - name: Post-rollback health check
+        run: |
+          echo "🏥 Waiting 30 seconds for deployment to stabilize..."
+          sleep 30
+
+          echo "Checking production health endpoint..."
+          HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" https://your-app.vercel.app/api/health || echo "000")
+
+          if [ "$HEALTH_CHECK" = "200" ]; then
+            echo "✅ Health check passed (HTTP 200)"
+          else
+            echo "⚠️ Health check returned HTTP $HEALTH_CHECK"
+            echo "Please investigate production status immediately"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment ID**: ${{ inputs.deployment_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Reason**: ${{ inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Initiated by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Verify production is working correctly" >> $GITHUB_STEP_SUMMARY
+          echo "2. Review the rollback issue created" >> $GITHUB_STEP_SUMMARY
+          echo "3. Identify and fix the root cause" >> $GITHUB_STEP_SUMMARY
+          echo "4. Create a new deployment with the fix" >> $GITHUB_STEP_SUMMARY

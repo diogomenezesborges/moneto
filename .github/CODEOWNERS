@@ -1,0 +1,27 @@
+# CODEOWNERS - Code Review Requirements
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @your-username
+
+# Production-critical files require extra scrutiny
+/.github/workflows/production-deployment.yml @your-username
+/docs/MULTI_ENVIRONMENT_STRATEGY.md @your-username
+/docs/GITHUB_SETUP.md @your-username
+
+# Database schema and migrations require careful review
+/prisma/migrations/ @your-username
+/prisma/schema.prisma @your-username
+
+# Security-sensitive files
+/lib/auth.ts @your-username
+/lib/rate-limiter.ts @your-username
+/lib/validation.ts @your-username
+/lib/csrf.ts @your-username
+
+# Environment configuration
+/.env.example @your-username
+/next.config.js @your-username
+
+# CI/CD workflows
+/.github/workflows/ @your-username
